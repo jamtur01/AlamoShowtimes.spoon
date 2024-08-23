@@ -19,12 +19,26 @@ obj.cache_path = hs.fs.pathToAbsolute(hs.configdir) .. "/drafthouse_cache.json"
 -- Menu bar icon
 obj.menubar = hs.menubar.new()
 
+-- Set Menubar Icon
+function obj:setMenubarIcon()
+    local iconPath = hs.spoons.resourcePath("alamo-logo-black.png")
+    local iconImage = hs.image.imageFromPath(iconPath)
+
+    if iconImage then
+        obj.menubar:setIcon(iconImage)
+    else
+        -- Fallback to text if the image is not found
+        obj.menubar:setTitle("A")
+    end
+end
+
 -- Initialization
 function obj:init()
     -- Load cache if available
     self:loadCache()
 
-    obj.menubar:setTitle("A")
+    -- Set the menubar icon
+    self:setMenubarIcon()
 
     -- Set up menu
     self:updateMenu()
