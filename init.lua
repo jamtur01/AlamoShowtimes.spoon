@@ -21,7 +21,7 @@ obj.menubar = hs.menubar.new()
 
 -- Set Menubar Icon
 function obj:setMenubarIcon()
-    local iconPath = hs.spoons.resourcePath("alamo-logo-black.png")
+    local iconPath = hs.spoons.resourcePath("film-logo.png")
     local iconImage = hs.image.imageFromPath(iconPath)
 
     if iconImage then
