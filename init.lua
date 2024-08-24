@@ -99,7 +99,6 @@ function obj:safeTime(date_str)
     return nil
 end
 
--- Function to align columns for showtimes and add URLs for clicking
 function obj:formatShowtimesTable(showtimes_by_day)
     local menu_items = {}
 
@@ -126,13 +125,16 @@ function obj:formatShowtimesTable(showtimes_by_day)
             local times = show_data.times
             local url = show_data.url
 
-            -- Align the title and times with a fixed width for the title
-            local formatted_title = show_title .. string.rep(" ", max_title_length - #show_title)  -- Left-align titles to max length
+            -- Align the title and times with manual spacing (fixed width for title)
+            local formatted_title = string.format("%-" .. max_title_length .. "s", show_title)
             local time_string = table.concat(times, " - ")
+
+            -- Combine title and times with proper spacing and alignment
+            local combined_entry = formatted_title .. "  " .. time_string
 
             -- Add the formatted title and times to the menu with a click handler to open the URL
             table.insert(menu_items, {
-                title = string.format("%-" .. max_title_length .. "s %s", show_title, time_string),
+                title = combined_entry,
                 fn = function() hs.urlevent.openURL(url) end  -- Open the URL when clicked
             })
         end
