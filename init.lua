@@ -113,6 +113,10 @@ function obj:formatShowtimesTable(showtimes_by_day)
         end
     end
 
+    -- Add some padding to the maximum title length for spacing
+    local padding = 5
+    max_title_length = max_title_length + padding
+
     for date, shows in pairs(showtimes_by_day) do
         -- Add the date as a header
         table.insert(menu_items, { title = date, disabled = true })
@@ -123,12 +127,12 @@ function obj:formatShowtimesTable(showtimes_by_day)
             local url = show_data.url
 
             -- Align the title and times with a fixed width for the title
-            local formatted_title = string.format("%-" .. max_title_length .. "s", show_title)  -- Left-align titles to max length
+            local formatted_title = show_title .. string.rep(" ", max_title_length - #show_title)  -- Left-align titles to max length
             local time_string = table.concat(times, " - ")
 
             -- Add the formatted title and times to the menu with a click handler to open the URL
             table.insert(menu_items, {
-                title = formatted_title .. "   " .. time_string,
+                title = string.format("%-" .. max_title_length .. "s %s", show_title, time_string),
                 fn = function() hs.urlevent.openURL(url) end  -- Open the URL when clicked
             })
         end
