@@ -80,15 +80,13 @@ end
 -- Safely convert a date string into a time object and handle errors
 function obj:safeTime(date_str)
     -- Expected date format is MM/DD/YY (e.g., 08/22/24)
-    local month = tonumber(date_str:sub(1, 2))
-    local day = tonumber(date_str:sub(4, 5))
-    local year = tonumber("20" .. date_str:sub(7, 8))  -- Convert the two-digit year to four digits
-
+    local month, day, year = date_str:match("(%d+)/(%d+)/(%d+)")
+    
     -- Validate that all components exist and are valid
-    if year and month and day and year > 1900 and year < 3000 and month >= 1 and month <= 12 and day >= 1 and day <= 31 then
-        local time_obj = os.time({ year = year, month = month, day = day })
-        if time_obj then
-            return time_obj
+    if month and day and year then
+        month, day, year = tonumber(month), tonumber(day), tonumber("20" .. year)
+        if year and month and day and year > 1900 and year < 3000 and month >= 1 and month <= 12 and day >= 1 and day <= 31 then
+            return os.time({ year = year, month = month, day = day })
         end
     end
 
@@ -101,45 +99,43 @@ end
 
 function obj:formatShowtimesTable(showtimes_by_day)
     local menu_items = {}
-
-    -- Calculate the maximum title length for consistent alignment
     local max_title_length = 0
+    local max_times_length = 0
+
+    -- First pass: calculate maximum lengths
     for _, shows in pairs(showtimes_by_day) do
-        for show_title in pairs(shows) do
-            if #show_title > max_title_length then
-                max_title_length = #show_title
-            end
+        for show_title, show_data in pairs(shows) do
+            max_title_length = math.max(max_title_length, #show_title)
+            local times_string = table.concat(show_data.times, " - ")
+            max_times_length = math.max(max_times_length, #times_string)
         end
     end
 
-    -- Add some padding to the maximum title length for spacing
-    local padding = 5
-    max_title_length = max_title_length + padding
+    -- Add some padding
+    local title_padding = 2
+    local times_padding = 2
+    max_title_length = max_title_length + title_padding
+    max_times_length = max_times_length + times_padding
 
+    -- Second pass: format and add menu items
     for date, shows in pairs(showtimes_by_day) do
-        -- Add the date as a header
         table.insert(menu_items, { title = date, disabled = true })
 
-        -- Add the shows under that date
         for show_title, show_data in pairs(shows) do
             local times = show_data.times
             local url = show_data.url
 
-            -- Align the title and times with manual spacing (fixed width for title)
             local formatted_title = string.format("%-" .. max_title_length .. "s", show_title)
-            local time_string = table.concat(times, " - ")
+            local time_string = string.format("%-" .. max_times_length .. "s", table.concat(times, " - "))
 
-            -- Combine title and times with proper spacing and alignment
-            local combined_entry = formatted_title .. "  " .. time_string
+            local combined_entry = formatted_title .. time_string
 
-            -- Add the formatted title and times to the menu with a click handler to open the URL
             table.insert(menu_items, {
                 title = combined_entry,
-                fn = function() hs.urlevent.openURL(url) end  -- Open the URL when clicked
+                fn = function() hs.urlevent.openURL(url) end
             })
         end
 
-        -- Add a separator between days
         table.insert(menu_items, { title = "-" })
     end
 
@@ -170,8 +166,8 @@ end
 
 -- Process showtimes and populate the menu by day and location with aligned columns and correct date order
 function obj:processShowtimes(data)
-    local market_name = data["data"]["market"][1]["name"]
-    local presentations = data["data"]["presentations"]
+    local market_name = data.data.market[1].name
+    local presentations = data.data.presentations
     local showtimes_by_day = {}
 
     -- Get the cinemaId for the selected location
@@ -179,12 +175,18 @@ function obj:processShowtimes(data)
 
     -- Today's date and limit to next 5 days
     local today = os.time()
-    local five_days_from_now = os.time() + (5 * 24 * 60 * 60)
+    local five_days_from_now = today + (5 * 24 * 60 * 60)
+
+    -- Create a lookup table for presentations
+    local presentation_lookup = {}
+    for _, presentation in ipairs(presentations) do
+        presentation_lookup[presentation.slug] = presentation
+    end
 
     -- Organize showtimes by day and filter by location (cinemaId)
-    for _, session in ipairs(data["data"]["sessions"]) do
-        if session["cinemaId"] == selected_cinema_id then
-            local show_time_clt = session["showTimeClt"]
+    for _, session in ipairs(data.data.sessions) do
+        if session.cinemaId == selected_cinema_id then
+            local show_time_clt = session.showTimeClt
             local show_time_unix = os.time({
                 year = tonumber(show_time_clt:sub(1, 4)),
                 month = tonumber(show_time_clt:sub(6, 7)),
@@ -194,27 +196,16 @@ function obj:processShowtimes(data)
             })
 
             if show_time_unix >= today and show_time_unix <= five_days_from_now then
-                local presentation_slug = session["presentationSlug"]
-                local business_date = os.date("%x", show_time_unix)
-                local formatted_time = self:formatTime(show_time_clt)
+                local presentation = presentation_lookup[session.presentationSlug]
+                if presentation then
+                    local business_date = os.date("%x", show_time_unix)
+                    local formatted_time = self:formatTime(show_time_clt)
+                    local show_title = presentation.show.title
+                    local movie_url = "https://drafthouse.com/" .. self.market .. "/show/" .. session.presentationSlug
 
-                -- Find the matching presentation for the session
-                for _, presentation in ipairs(presentations) do
-                    if presentation["slug"] == presentation_slug then
-                        local show_title = presentation["show"]["title"]
-                        local movie_url = "https://drafthouse.com/" .. self.market .. "/show/" .. presentation_slug
-
-                        -- Group by the business date
-                        if not showtimes_by_day[business_date] then
-                            showtimes_by_day[business_date] = {}
-                        end
-
-                        -- Add the show details with the URL
-                        if not showtimes_by_day[business_date][show_title] then
-                            showtimes_by_day[business_date][show_title] = { times = {}, url = movie_url }
-                        end
-                        table.insert(showtimes_by_day[business_date][show_title].times, formatted_time)
-                    end
+                    showtimes_by_day[business_date] = showtimes_by_day[business_date] or {}
+                    showtimes_by_day[business_date][show_title] = showtimes_by_day[business_date][show_title] or { times = {}, url = movie_url }
+                    table.insert(showtimes_by_day[business_date][show_title].times, formatted_time)
                 end
             end
         end
@@ -233,8 +224,9 @@ function obj:processShowtimes(data)
     table.sort(sorted_dates, function(a, b) return a.time_obj < b.time_obj end)
 
     -- Generate the menu items in the correct order with aligned columns and clickable URLs
-    local menu_items = {}
-    table.insert(menu_items, { title = "Alamo Drafthouse | " .. market_name .. " (" .. self.location .. ")", disabled = true })
+    local menu_items = {
+        { title = "Alamo Drafthouse | " .. market_name .. " (" .. self.location .. ")", disabled = true }
+    }
 
     for _, day_data in ipairs(sorted_dates) do
         local date = day_data.date
@@ -274,24 +266,28 @@ end
 
 -- Display cached showtimes if available
 function obj:displayCachedShowtimes(menu_items)
-    if self.cached_showtimes and #self.cached_showtimes > 0 then
+    if self.cached_showtimes and next(self.cached_showtimes) then
         -- Add a title
         table.insert(menu_items, { title = "Cached Showtimes", disabled = true })
 
         -- Add cached showtimes to the menu
-        for _, item in ipairs(self.cached_showtimes) do
-            table.insert(menu_items, { title = item.title })
+        for date, shows in pairs(self.cached_showtimes) do
+            table.insert(menu_items, { title = date, disabled = true })
+            for show_title, show_data in pairs(shows) do
+                local times_string = table.concat(show_data.times, " - ")
+                table.insert(menu_items, { 
+                    title = string.format("%-30s %s", show_title, times_string),
+                    fn = function() hs.urlevent.openURL(show_data.url) end
+                })
+            end
+            table.insert(menu_items, { title = "-" })
         end
-
-        -- Update the menu bar with cached showtimes
-        self.menubar:setMenu(menu_items)
     else
         table.insert(menu_items, { title = "No cached showtimes available", disabled = true })
-        self.menubar:setMenu(menu_items)
     end
+    self.menubar:setMenu(menu_items)
 end
 
 obj:init()
 
 return obj
-
