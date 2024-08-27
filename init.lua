@@ -28,7 +28,7 @@ function obj:setMenubarIcon()
         obj.menubar:setIcon(iconImage)
     else
         -- Fallback to text if the image is not found
-        obj.menubar:setTitle("A")
+        obj.menubar:setTitle("🎬")
     end
 end
 
@@ -106,37 +106,36 @@ function obj:formatShowtimesTable(showtimes_by_day)
     for _, shows in pairs(showtimes_by_day) do
         for show_title, show_data in pairs(shows) do
             max_title_length = math.max(max_title_length, #show_title)
-            local times_string = table.concat(show_data.times, " - ")
+            local times_string = table.concat(show_data.times, " • ")
             max_times_length = math.max(max_times_length, #times_string)
         end
     end
 
     -- Add some padding
-    local title_padding = 2
+    local title_padding = 4
     local times_padding = 2
     max_title_length = max_title_length + title_padding
     max_times_length = max_times_length + times_padding
 
     -- Second pass: format and add menu items
     for date, shows in pairs(showtimes_by_day) do
-        table.insert(menu_items, { title = date, disabled = true })
+        local formatted_date = os.date("%A, %B %d", self:safeTime(date))
+        table.insert(menu_items, { title = "───── " .. formatted_date .. " ─────", disabled = true })
 
         for show_title, show_data in pairs(shows) do
             local times = show_data.times
             local url = show_data.url
 
             local formatted_title = string.format("%-" .. max_title_length .. "s", show_title)
-            local time_string = string.format("%-" .. max_times_length .. "s", table.concat(times, " - "))
+            local time_string = table.concat(times, " • ")
 
-            local combined_entry = formatted_title .. time_string
+            local combined_entry = formatted_title .. "│ " .. time_string
 
             table.insert(menu_items, {
                 title = combined_entry,
                 fn = function() hs.urlevent.openURL(url) end
             })
         end
-
-        table.insert(menu_items, { title = "-" })
     end
 
     return menu_items
@@ -225,7 +224,8 @@ function obj:processShowtimes(data)
 
     -- Generate the menu items in the correct order with aligned columns and clickable URLs
     local menu_items = {
-        { title = "Alamo Drafthouse | " .. market_name .. " (" .. self.location .. ")", disabled = true }
+        { title = "🎬 Alamo Drafthouse | " .. market_name .. " (" .. self.location .. ")", disabled = true },
+        { title = "─────────────────────────────────", disabled = true }
     }
 
     for _, day_data in ipairs(sorted_dates) do
@@ -268,19 +268,21 @@ end
 function obj:displayCachedShowtimes(menu_items)
     if self.cached_showtimes and next(self.cached_showtimes) then
         -- Add a title
-        table.insert(menu_items, { title = "Cached Showtimes", disabled = true })
+        table.insert(menu_items, { title = "🕰 Cached Showtimes", disabled = true })
+        table.insert(menu_items, { title = "─────────────────────────────────", disabled = true })
 
         -- Add cached showtimes to the menu
         for date, shows in pairs(self.cached_showtimes) do
-            table.insert(menu_items, { title = date, disabled = true })
+            local formatted_date = os.date("%A, %B %d", self:safeTime(date))
+            table.insert(menu_items, { title = "───── " .. formatted_date .. " ─────", disabled = true })
             for show_title, show_data in pairs(shows) do
-                local times_string = table.concat(show_data.times, " - ")
+                local times_string = table.concat(show_data.times, " • ")
                 table.insert(menu_items, { 
-                    title = string.format("%-30s %s", show_title, times_string),
+                    title = string.format("%-30s│ %s", show_title, times_string),
                     fn = function() hs.urlevent.openURL(show_data.url) end
                 })
             end
-            table.insert(menu_items, { title = "-" })
+            table.insert(menu_items, { title = "─────────────────────────────────", disabled = true })
         end
     else
         table.insert(menu_items, { title = "No cached showtimes available", disabled = true })
