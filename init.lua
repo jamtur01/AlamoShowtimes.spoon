@@ -3,7 +3,7 @@ obj.__index = obj
 
 -- Metadata
 obj.name = "AlamoShowtimes"
-obj.version = "1.0"
+obj.version = "1.1"
 obj.author = "James Turnbull"
 obj.homepage = "https://github.com/jamtur01/AlamoShowtimes.spoon"
 obj.license = "MIT"
