@@ -97,25 +97,45 @@ function obj:safeTime(date_str)
     return nil
 end
 
+-- Helper function to remove diacritics from a string
+function obj:removeDiacritics(str)
+    local diacritics = {
+        ['á'] = 'a', ['à'] = 'a', ['ã'] = 'a', ['â'] = 'a', ['ä'] = 'a',
+        ['é'] = 'e', ['è'] = 'e', ['ê'] = 'e', ['ë'] = 'e',
+        ['í'] = 'i', ['ì'] = 'i', ['î'] = 'i', ['ï'] = 'i',
+        ['ó'] = 'o', ['ò'] = 'o', ['õ'] = 'o', ['ô'] = 'o', ['ö'] = 'o',
+        ['ú'] = 'u', ['ù'] = 'u', ['û'] = 'u', ['ü'] = 'u',
+        ['ñ'] = 'n',
+        ['ç'] = 'c'
+    }
+    return str:gsub('[%z\1-\127\194-\244][\128-\191]*', diacritics)
+end
+
+-- Helper function to get the visual length of a string (considering UTF-8 characters)
+function obj:visualLength(str)
+    local len = 0
+    for _ in str:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        len = len + 1
+    end
+    return len
+end
+
 function obj:formatShowtimesTable(showtimes_by_day)
     local menu_items = {}
     local max_title_length = 0
-    local max_times_length = 0
 
-    -- First pass: calculate maximum lengths
+    -- First pass: calculate the maximum title length
     for _, shows in pairs(showtimes_by_day) do
-        for show_title, show_data in pairs(shows) do
-            max_title_length = math.max(max_title_length, #show_title)
-            local times_string = table.concat(show_data.times, " • ")
-            max_times_length = math.max(max_times_length, #times_string)
+        for show_title, _ in pairs(shows) do
+            max_title_length = math.max(max_title_length, self:visualLength(show_title))
         end
     end
 
-    -- Add some padding
-    local title_padding = 4
-    local times_padding = 2
-    max_title_length = max_title_length + title_padding
-    max_times_length = max_times_length + times_padding
+    -- Add 3 spaces for padding
+    max_title_length = max_title_length + 3
+
+    -- Define the monospaced font style
+    local font_style = { font = { name = "Menlo", size = 14 }, paragraphStyle = { alignment = "left" } }
 
     -- Second pass: format and add menu items
     for date, shows in pairs(showtimes_by_day) do
@@ -126,10 +146,17 @@ function obj:formatShowtimesTable(showtimes_by_day)
             local times = show_data.times
             local url = show_data.url
 
-            local formatted_title = string.format("%-" .. max_title_length .. "s", show_title)
+            -- Remove diacritics for length calculation
+            local title_without_diacritics = self:removeDiacritics(show_title)
+
+            -- Calculate padding
+            local padding = max_title_length - self:visualLength(title_without_diacritics)
+            local formatted_title = show_title .. string.rep(" ", padding)
+
             local time_string = table.concat(times, " • ")
 
-            local combined_entry = formatted_title .. "│ " .. time_string
+            -- Combine title and times and apply monospaced font
+            local combined_entry = hs.styledtext.new(formatted_title .. "│ " .. time_string, font_style)
 
             table.insert(menu_items, {
                 title = combined_entry,
@@ -172,9 +199,9 @@ function obj:processShowtimes(data)
     -- Get the cinemaId for the selected location
     local selected_cinema_id = self.cinema_ids[self.location:gsub(" ", "")]
 
-    -- Today's date and limit to next 5 days
-    local today = os.time()
-    local five_days_from_now = today + (5 * 24 * 60 * 60)
+    -- Today's date and limit to the next 5 days
+    local now = os.time()
+    local five_days_from_now = now + (5 * 24 * 60 * 60)
 
     -- Create a lookup table for presentations
     local presentation_lookup = {}
@@ -194,7 +221,8 @@ function obj:processShowtimes(data)
                 min = tonumber(show_time_clt:sub(15, 16)),
             })
 
-            if show_time_unix >= today and show_time_unix <= five_days_from_now then
+            -- Filter out past showtimes
+            if show_time_unix >= now and show_time_unix <= five_days_from_now then
                 local presentation = presentation_lookup[session.presentationSlug]
                 if presentation then
                     local business_date = os.date("%x", show_time_unix)
