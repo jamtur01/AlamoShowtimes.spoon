@@ -120,24 +120,26 @@ function obj:visualLength(str)
     return len
 end
 
-function obj:formatShowtimesTable(showtimes_by_day)
-    local menu_items = {}
-    local max_title_length = 0
-
-    -- First pass: calculate the maximum title length
+-- Calculate max title length across all days
+function obj:calculateMaxTitleLength(showtimes_by_day)
+    local max_length = 0
     for _, shows in pairs(showtimes_by_day) do
         for show_title, _ in pairs(shows) do
-            max_title_length = math.max(max_title_length, self:visualLength(show_title))
+            local title_without_diacritics = self:removeDiacritics(show_title)
+            max_length = math.max(max_length, self:visualLength(title_without_diacritics))
         end
     end
+    return max_length + 3  -- Add 3 spaces for padding
+end
 
-    -- Add 3 spaces for padding
-    max_title_length = max_title_length + 3
+function obj:formatShowtimesTable(showtimes_by_day)
+    local menu_items = {}
+    local max_title_length = self:calculateMaxTitleLength(showtimes_by_day)
 
     -- Define the monospaced font style
     local font_style = { font = { name = "Menlo", size = 14 }, paragraphStyle = { alignment = "left" } }
 
-    -- Second pass: format and add menu items
+    -- Format and add menu items
     for date, shows in pairs(showtimes_by_day) do
         local formatted_date = os.date("%A, %B %d", self:safeTime(date))
         table.insert(menu_items, { title = "───── " .. formatted_date .. " ─────", disabled = true })
@@ -168,6 +170,24 @@ function obj:formatShowtimesTable(showtimes_by_day)
     return menu_items
 end
 
+-- Update menu
+function obj:updateMenu()
+    local menu_items = {}
+
+    -- Fetch and display movie times in the menu bar
+    hs.http.asyncGet("https://drafthouse.com/s/mother/v2/schedule/market/" .. self.market, nil, function(status, body, headers)
+        if status == 200 then
+            local result = hs.json.decode(body)
+            local showtimes_by_day = self:processShowtimes(result)
+            menu_items = self:formatShowtimesTable(showtimes_by_day)
+            self.menubar:setMenu(menu_items)
+        else
+            print("Failed to fetch movie times")
+            self:displayCachedShowtimes(menu_items)
+        end
+    end)
+end
+
 -- Cache only the data that can be serialized (no functions)
 function obj:cacheShowtimesData(showtimes_by_day)
     local cacheable_data = {}
@@ -190,7 +210,7 @@ function obj:cacheShowtimesData(showtimes_by_day)
     end
 end
 
--- Process showtimes and populate the menu by day and location with aligned columns and correct date order
+-- Process showtimes and return a table organized by day
 function obj:processShowtimes(data)
     local market_name = data.data.market[1].name
     local presentations = data.data.presentations
@@ -238,37 +258,31 @@ function obj:processShowtimes(data)
         end
     end
 
-    -- Sort the days based on today's date, followed by tomorrow, etc.
-    local sorted_dates = {}
-    for date in pairs(showtimes_by_day) do
-        local time_obj = self:safeTime(date)
-        if time_obj then
-            table.insert(sorted_dates, { date = date, time_obj = time_obj })
+    -- Sort the times for each movie
+    for _, day_shows in pairs(showtimes_by_day) do
+        for _, show_data in pairs(day_shows) do
+            table.sort(show_data.times)
         end
     end
 
-    -- Safely sort the dates
-    table.sort(sorted_dates, function(a, b) return a.time_obj < b.time_obj end)
+    return showtimes_by_day
+end
 
-    -- Generate the menu items in the correct order with aligned columns and clickable URLs
-    local menu_items = {
-        { title = "🎬 Alamo Drafthouse | " .. market_name .. " (" .. self.location .. ")", disabled = true },
-        { title = "─────────────────────────────────", disabled = true }
+-- Helper function to format times (should be defined elsewhere in your code)
+function obj:formatTime(date_str)
+    local time_table = {
+        year = tonumber(date_str:sub(1, 4)),
+        month = tonumber(date_str:sub(6, 7)),
+        day = tonumber(date_str:sub(9, 10)),
+        hour = tonumber(date_str:sub(12, 13)),
+        min = tonumber(date_str:sub(15, 16))
     }
 
-    for _, day_data in ipairs(sorted_dates) do
-        local date = day_data.date
-        -- Add the formatted showtimes for each date
-        for _, item in ipairs(self:formatShowtimesTable({ [date] = showtimes_by_day[date] })) do
-            table.insert(menu_items, item)
-        end
-    end
+    -- Format the time as 12-hour format (e.g., 12:45 PM)
+    local formatted_time = os.date("%I:%M %p", os.time(time_table))
 
-    -- Cache the showtimes data (without functions)
-    self:cacheShowtimesData(showtimes_by_day)
-
-    -- Add showtimes to the menu bar
-    self.menubar:setMenu(menu_items)
+    -- Remove leading zero from the hour (e.g., 01:00 PM -> 1:00 PM)
+    return formatted_time:gsub("^0", "")
 end
 
 -- Set the market and location, then update the menu
