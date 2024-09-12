@@ -45,6 +45,22 @@ function obj:formatTime(date_str)
     return formatted_time:gsub("^0", "")
 end
 
+function obj:timeToMinutes(timeStr)
+    if not timeStr then return nil end
+    local hour, min, period = timeStr:match("(%d+):(%d+)%s*(%a+)")
+    if not (hour and min and period) then
+        print("Invalid time format: " .. tostring(timeStr))
+        return nil
+    end
+    hour, min = tonumber(hour), tonumber(min)
+    if period == "PM" and hour ~= 12 then
+        hour = hour + 12
+    elseif period == "AM" and hour == 12 then
+        hour = 0
+    end
+    return hour * 60 + min
+end
+
 function obj:safeTime(date_str)
     local month, day, year = date_str:match("(%d+)/(%d+)/(%d+)")
     
@@ -147,9 +163,21 @@ function obj:processShowtimes(data)
         end
     end
 
-    for date, day_data in pairs(showtimes_by_day) do
+    for _, day_data in pairs(showtimes_by_day) do
         for _, show_data in pairs(day_data.shows) do
-            table.sort(show_data.times)
+            table.sort(show_data.times, function(a, b)
+                local a_min = self:timeToMinutes(a)
+                local b_min = self:timeToMinutes(b)
+                if a_min and b_min then
+                    return a_min < b_min
+                elseif a_min then
+                    return true
+                elseif b_min then
+                    return false
+                else
+                    return tostring(a) < tostring(b)
+                end
+            end)
         end
     end
 
@@ -167,6 +195,25 @@ function obj:formatShowtimesTable(showtimes_by_day)
 
     local font_style = { font = { name = "Menlo", size = 14 }, paragraphStyle = { alignment = "left" } }
 
+    local function wrapTimes(times, maxWidth)
+        local lines = {}
+        local currentLine = {}
+        local currentWidth = 0
+        for _, time in ipairs(times) do
+            if currentWidth + #time + 3 > maxWidth and #currentLine > 0 then
+                table.insert(lines, table.concat(currentLine, " • "))
+                currentLine = {}
+                currentWidth = 0
+            end
+            table.insert(currentLine, time)
+            currentWidth = currentWidth + #time + 3
+        end
+        if #currentLine > 0 then
+            table.insert(lines, table.concat(currentLine, " • "))
+        end
+        return lines
+    end
+
     for _, date in ipairs(sorted_days) do
         local day_data = showtimes_by_day[date]
         table.insert(menu_items, { title = "───── " .. day_data.formatted_date .. " ─────", disabled = true })
@@ -177,13 +224,16 @@ function obj:formatShowtimesTable(showtimes_by_day)
             local title_without_diacritics = self:removeDiacritics(show_title)
             local padding = max_title_length - self:visualLength(title_without_diacritics)
             local formatted_title = show_title .. string.rep(" ", padding)
-            local time_string = table.concat(times, " • ")
-            local combined_entry = hs.styledtext.new(formatted_title .. "│ " .. time_string, font_style)
 
-            table.insert(menu_items, {
-                title = combined_entry,
-                fn = function() hs.urlevent.openURL(url) end
-            })
+            local wrapped_times = wrapTimes(times, 50)
+            for i, time_line in ipairs(wrapped_times) do
+                local line_title = i == 1 and formatted_title or string.rep(" ", self:visualLength(formatted_title))
+                local combined_entry = hs.styledtext.new(line_title .. "│ " .. time_line, font_style)
+                table.insert(menu_items, {
+                    title = combined_entry,
+                    fn = function() hs.urlevent.openURL(url) end
+                })
+            end
         end
     end
 
