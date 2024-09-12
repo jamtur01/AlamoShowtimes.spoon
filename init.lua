@@ -2,7 +2,7 @@ local obj = {}
 obj.__index = obj
 
 obj.name = "AlamoShowtimes"
-obj.version = "1.3"
+obj.version = "1.4"
 obj.author = "James Turnbull"
 obj.homepage = "https://github.com/jamtur01/AlamoShowtimes.spoon"
 obj.license = "MIT"
