@@ -24,12 +24,17 @@ function obj:setMenubarIcon()
     else
         obj.menubar:setTitle("🎬")
     end
+    self.menubar:setTooltip("Alamo Drafthouse Showtimes")
 end
 
 function obj:init()
     self:loadCache()
     self:setMenubarIcon()
     self:updateMenu()
+
+    self.refresh_timer = hs.timer.doEvery(3600, function()
+        self:updateMenu()
+    end)
 end
 
 function obj:formatTime(date_str)
@@ -97,17 +102,10 @@ function obj:visualLength(str)
 end
 
 function obj:cacheShowtimesData(showtimes_by_day)
-    local cacheable_data = {}
-
-    for date, shows in pairs(showtimes_by_day) do
-        cacheable_data[date] = {}
-        for show_title, show_data in pairs(shows) do
-            cacheable_data[date][show_title] = {
-                times = show_data.times,
-                url = show_data.url
-            }
-        end
-    end
+    local cacheable_data = {
+        showtimes = showtimes_by_day,
+        timestamp = os.time() -- Store the current time as the cache timestamp
+    }
 
     local file = io.open(self.cache_path, "w")
     if file then
@@ -275,8 +273,21 @@ function obj:loadCache()
         local file = io.open(self.cache_path, "r")
         if file then
             local contents = file:read("*a")
-            self.cached_showtimes = hs.json.decode(contents) or {}
+            local cached_data = hs.json.decode(contents)
             file:close()
+
+            if cached_data and cached_data.timestamp then
+                local expiration_time = 24 * 60 * 60
+                local cache_age = os.time() - cached_data.timestamp
+
+                if cache_age < expiration_time then
+                    self.cached_showtimes = cached_data.showtimes
+                else
+                    self.cached_showtimes = {}
+                end
+            else
+                self.cached_showtimes = {}
+            end
         end
     else
         self.cached_showtimes = {}
